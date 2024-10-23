@@ -1,0 +1,9 @@
+# editor
+*~
+.*~
+*.swp
+*.swo
+\#*#
+
+# Rust
+/target

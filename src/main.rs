@@ -29,7 +29,7 @@ async fn main_async() -> Result<()> {
         sub,
         lb,
         block_size,
-        config: zenoh_config_path,
+        zenoh_opts,
     } = Opts::parse();
 
     // Determine the buffering mode according to command line
@@ -41,10 +41,7 @@ async fn main_async() -> Result<()> {
     };
 
     // Start a Zenoh session.
-    let config = match zenoh_config_path {
-        Some(path) => zenoh::Config::from_file(path)?,
-        None => zenoh::Config::default(),
-    };
+    let config: zenoh::Config = zenoh_opts.into();
     let session = zenoh::open(config).await?;
 
     // Bail if both --pub are and --sub are not specified.

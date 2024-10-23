@@ -12,4 +12,7 @@ thiserror = "1.0.65"
 tokio = { version = "1.41.0", features = ["io-std", "macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1.16", features = ["io-util"] }
 tracing = "0.1.40"
-zenoh = "1.0.0"
+zenoh = { version = "1.0.0", features = ["unstable"] }
+
+[features]
+shared-memory = ["zenoh/shared-memory"]

@@ -1,4 +1,4 @@
-# zncat - A Simple Zenoh relay
+# zncat - Command Line Replay for Zenoh
 
 Zncat is a command line utility that transfers bidirectional byte
 streams to Zenoh.

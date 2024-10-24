@@ -39,7 +39,7 @@ publish in fixed sized blocks. For exmaple, to publish data in
 8192-byte blocks,
 
 ```sh
-zncat -b 8192 my_topic
+zncat -b 8192 --pub my_topic
 ```
 
 
@@ -48,19 +48,19 @@ zncat -b 8192 my_topic
 To establish a connection to a remote Zenoh peer.
 
 ```sh
-zncat -e tcp/123.123.123.123:6777 my_topic
+zncat -e tcp/123.123.123.123:6777 --pub my_topic
 ```
 
 To listen for incoming connections from Zenoh peers,
 
 ```sh
-zncat -l tcp/127.0.0.1:6777 my_topic
+zncat -l tcp/127.0.0.1:6777 --pub my_topic
 ```
 
 A configuration for Zenoh can be provided in the command line.
 
 ```sh
-zncat --config config.json5 my_topic
+zncat --config config.json5 --pub my_topic
 ```
 
 More Zenoh options can be discovered by `zncat --help`.

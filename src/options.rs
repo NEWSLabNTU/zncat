@@ -7,21 +7,21 @@ use std::{
 };
 use zenoh::{config::WhatAmI, Config};
 
-/// Command line utility to relay Zenoh message.
+/// Command line relay for Zenoh.
 #[derive(Debug, Clone, Parser)]
 pub struct Opts {
     /// The key to the resource to publish or subscribe.
     pub key: String,
 
-    /// Subscribe the key.
+    /// Publish to the key.
     #[clap(short = 'p', long)]
     pub r#pub: bool,
 
-    /// Subscribe the key.
+    /// Subscribe from the key.
     #[clap(short = 's', long)]
     pub sub: bool,
 
-    /// Publish input data in lines.
+    /// Publish input data in lines. It assumes plain text encoding.
     #[clap(long)]
     pub lb: bool,
 
@@ -48,7 +48,7 @@ impl Display for Wai {
 
 #[derive(clap::Parser, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ZenohOpts {
-    /// A configuration file.
+    /// A configuration file for Zenoh.
     #[arg(short = 'c', long)]
     pub config: Option<PathBuf>,
 

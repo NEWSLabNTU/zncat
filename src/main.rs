@@ -7,7 +7,6 @@ use futures::{try_join, TryStreamExt};
 use options::Opts;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_stream::wrappers::LinesStream;
-use zenoh::bytes::Encoding;
 
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
@@ -32,14 +31,6 @@ async fn main_async() -> Result<()> {
         zenoh_opts,
     } = Opts::parse();
 
-    // Determine the buffering mode according to command line
-    // options. The default is line buffering.
-    let buffering = match (lb, block_size) {
-        (_, None) => Buffering::default(),
-        (false, Some(block_size)) => Buffering::Block(block_size.get()),
-        (true, Some(_)) => return Err(Error::InvalidBufferingOptions),
-    };
-
     // Start a Zenoh session.
     let config: zenoh::Config = zenoh_opts.into();
     let session = zenoh::open(config).await?;
@@ -59,14 +50,32 @@ async fn main_async() -> Result<()> {
 
     // Run publicastion task
     let pub_task = async {
-        if r#pub {
-            match buffering {
-                Buffering::Lines => run_publisher_lines(&session, &key).await?,
-                Buffering::Block(block_size) => {
-                    run_publisher_blocks(&session, &key, block_size).await?
+        if !r#pub {
+            return Ok(());
+        }
+
+        // Determine the buffering mode according to command line options.
+        let buffering = match (lb, block_size) {
+            (false, None) => {
+                if atty::is(atty::Stream::Stdin) {
+                    Buffering::Lines
+                } else {
+                    Buffering::Block(8196)
                 }
             }
+            (false, Some(block_size)) => Buffering::Block(block_size.get()),
+            (true, None) => Buffering::Lines,
+            (true, Some(_)) => return Err(Error::InvalidBufferingOptions),
+        };
+
+        // Run publication depending on the buffering mode.
+        match buffering {
+            Buffering::Lines => run_publisher_lines(&session, &key).await?,
+            Buffering::Block(block_size) => {
+                run_publisher_blocks(&session, &key, block_size).await?
+            }
         }
+
         ok(())
     };
 
@@ -91,10 +100,7 @@ async fn run_subscriber(session: &zenoh::Session, key: &str) -> Result<()> {
 /// Run a Zenoh publication loop that reads STDIN in lines and publish
 /// them.
 async fn run_publisher_lines(session: &zenoh::Session, key: &str) -> Result<()> {
-    let publisher = session
-        .declare_publisher(key)
-        .encoding(Encoding::TEXT_PLAIN)
-        .await?;
+    let publisher = session.declare_publisher(key).await?;
 
     let stdin = tokio::io::stdin();
     let lines = BufReader::new(stdin).lines();
@@ -132,7 +138,6 @@ async fn run_publisher_blocks(
 
         publisher.put(&buf[0..size]).await?;
     }
-
     Ok(())
 }
 

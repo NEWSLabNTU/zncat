@@ -7,6 +7,7 @@ use std::{
 };
 use zenoh::{config::WhatAmI, Config};
 
+/// Command line utility to relay Zenoh message.
 #[derive(Debug, Clone, Parser)]
 pub struct Opts {
     /// The key to the resource to publish or subscribe.
@@ -20,7 +21,7 @@ pub struct Opts {
     #[clap(short = 's', long)]
     pub sub: bool,
 
-    /// Publish input data in lines. It is the default behavior.
+    /// Publish input data in lines.
     #[clap(short = 'l', long)]
     pub lb: bool,
 

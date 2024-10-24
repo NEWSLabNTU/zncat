@@ -22,11 +22,11 @@ pub struct Opts {
     pub sub: bool,
 
     /// Publish input data in lines.
-    #[clap(short = 'l', long)]
+    #[clap(long)]
     pub lb: bool,
 
     /// Publish input data in blocks with specified size.
-    #[clap(short = 'b', long)]
+    #[clap(long)]
     pub block_size: Option<NonZeroUsize>,
 
     #[clap(flatten)]
@@ -49,7 +49,7 @@ impl Display for Wai {
 #[derive(clap::Parser, Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ZenohOpts {
     /// A configuration file.
-    #[arg(short, long)]
+    #[arg(short = 'c', long)]
     pub config: Option<PathBuf>,
 
     /// Allows arbitrary configuration changes as column-separated KEY:VALUE pairs, where:
@@ -61,7 +61,7 @@ pub struct ZenohOpts {
     pub cfg: Vec<String>,
 
     /// The Zenoh session mode [default: peer].
-    #[arg(short, long)]
+    #[arg(short = 'm', long)]
     pub mode: Option<Wai>,
 
     /// Endpoints to connect to.
@@ -69,7 +69,7 @@ pub struct ZenohOpts {
     pub connect: Vec<String>,
 
     /// Endpoints to listen on.
-    #[arg(short, long)]
+    #[arg(short = 'l', long)]
     pub listen: Vec<String>,
 
     /// Disable the multicast-based scouting mechanism.

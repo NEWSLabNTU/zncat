@@ -9,7 +9,7 @@ Install the `zncat` command directly from GitHub. If you don't have
 cargo command already, go to [rustup.rs](https://rustup.rs) to fix it.
 
 ```sh
-cargo install --git https://github.com/NEWSLabNTU/zncat.git
+cargo install zncat
 ```
 
 ## Usage

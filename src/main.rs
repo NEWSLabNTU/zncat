@@ -7,10 +7,25 @@ use futures::{try_join, TryStreamExt};
 use options::Opts;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_stream::wrappers::LinesStream;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
 fn main() -> eyre::Result<()> {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+
+    let fmt_layer = tracing_subscriber::fmt::Layer::new()
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_level(true)
+        .with_target(true);
+
+    let tracing_sub = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer);
+
+    tracing_sub.init();
+
     // Construct a tokio runtime and block on the main_async().
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()

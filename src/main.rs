@@ -12,7 +12,7 @@ use zenoh::qos::Priority;
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
 fn main() -> eyre::Result<()> {
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off"));
 
     let fmt_layer = tracing_subscriber::fmt::Layer::new()
         .with_thread_ids(true)

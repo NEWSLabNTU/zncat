@@ -3,7 +3,7 @@ use std::io;
 /// The type alias replacing the error type to [Error](Error).
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-/// The universal error type unsed across the crate.
+/// The universal error type used across the crate.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Error from Zenoh: {0}")]
@@ -20,6 +20,9 @@ pub enum Error {
 
     #[error("At least one of --pub or --sub must be specified")]
     NoPubSubOptions,
+
+    #[error("Invalid priority level specified. Allowed values: RealTime, InteractiveHigh, InteractiveLow, DataHigh, Data, DataLow, Background")]
+    InvalidPriority,
 }
 
 pub fn ok<T>(value: T) -> Result<T> {

@@ -29,6 +29,14 @@ pub struct Opts {
     #[clap(long)]
     pub block_size: Option<NonZeroUsize>,
 
+    /// QoS priority level [default: Data].
+    #[clap(long, default_value = "Data")]
+    pub priority: String,
+
+    /// Disable express mode for sending data.
+    #[clap(long, default_value = "false")]
+    pub no_express: bool,
+
     #[clap(flatten)]
     pub zenoh_opts: ZenohOpts,
 }

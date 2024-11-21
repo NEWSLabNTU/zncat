@@ -35,7 +35,7 @@ pub struct Opts {
 
     /// Disable express mode for sending data.
     #[clap(long, default_value = "false")]
-    pub no_express: bool,
+    pub express: bool,
 
     #[clap(flatten)]
     pub zenoh_opts: ZenohOpts,

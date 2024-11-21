@@ -45,7 +45,7 @@ async fn main_async() -> Result<()> {
         block_size,
         zenoh_opts,
         priority,
-        no_express,
+        express,
     } = Opts::parse();
 
     // Start a Zenoh session.
@@ -68,8 +68,6 @@ async fn main_async() -> Result<()> {
         "Background" => Priority::Background,
         _ => return Err(Error::InvalidPriority),
     };
-
-    let express = !no_express;
 
     // Run subscription task
     let sub_task = async {

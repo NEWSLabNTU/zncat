@@ -7,10 +7,25 @@ use futures::{try_join, TryStreamExt};
 use options::Opts;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio_stream::wrappers::LinesStream;
-
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use zenoh::qos::Priority;
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
 fn main() -> eyre::Result<()> {
+    let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("off"));
+
+    let fmt_layer = tracing_subscriber::fmt::Layer::new()
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_level(true)
+        .with_target(true);
+
+    let tracing_sub = tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer);
+
+    tracing_sub.init();
+
     // Construct a tokio runtime and block on the main_async().
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -29,6 +44,8 @@ async fn main_async() -> Result<()> {
         lb,
         block_size,
         zenoh_opts,
+        priority,
+        express,
     } = Opts::parse();
 
     // Start a Zenoh session.
@@ -40,6 +57,18 @@ async fn main_async() -> Result<()> {
         return Err(Error::NoPubSubOptions);
     }
 
+    // Parse priority and express options
+    let priority = match priority.as_str() {
+        "RealTime" => Priority::RealTime,
+        "InteractiveHigh" => Priority::InteractiveHigh,
+        "InteractiveLow" => Priority::InteractiveLow,
+        "DataHigh" => Priority::DataHigh,
+        "Data" => Priority::Data,
+        "DataLow" => Priority::DataLow,
+        "Background" => Priority::Background,
+        _ => return Err(Error::InvalidPriority),
+    };
+
     // Run subscription task
     let sub_task = async {
         if sub {
@@ -48,7 +77,7 @@ async fn main_async() -> Result<()> {
         ok(())
     };
 
-    // Run publicastion task
+    // Run publication task
     let pub_task = async {
         if !r#pub {
             return Ok(());
@@ -70,9 +99,9 @@ async fn main_async() -> Result<()> {
 
         // Run publication depending on the buffering mode.
         match buffering {
-            Buffering::Lines => run_publisher_lines(&session, &key).await?,
+            Buffering::Lines => run_publisher_lines(&session, &key, priority, express).await?,
             Buffering::Block(block_size) => {
-                run_publisher_blocks(&session, &key, block_size).await?
+                run_publisher_blocks(&session, &key, block_size, priority, express).await?
             }
         }
 
@@ -99,8 +128,17 @@ async fn run_subscriber(session: &zenoh::Session, key: &str) -> Result<()> {
 
 /// Run a Zenoh publication loop that reads STDIN in lines and publish
 /// them.
-async fn run_publisher_lines(session: &zenoh::Session, key: &str) -> Result<()> {
-    let publisher = session.declare_publisher(key).await?;
+async fn run_publisher_lines(
+    session: &zenoh::Session,
+    key: &str,
+    priority: Priority,
+    express: bool,
+) -> Result<()> {
+    let publisher = session
+        .declare_publisher(key)
+        .priority(priority)
+        .express(express)
+        .await?;
 
     let stdin = tokio::io::stdin();
     let lines = BufReader::new(stdin).lines();
@@ -124,8 +162,14 @@ async fn run_publisher_blocks(
     session: &zenoh::Session,
     key: &str,
     block_size: usize,
+    priority: Priority,
+    express: bool,
 ) -> Result<()> {
-    let publisher = session.declare_publisher(key).await?;
+    let publisher = session
+        .declare_publisher(key)
+        .priority(priority)
+        .express(express)
+        .await?;
 
     let mut stdin = tokio::io::stdin();
     let mut buf = vec![0; block_size];

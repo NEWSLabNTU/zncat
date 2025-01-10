@@ -1,14 +1,23 @@
 mod error;
 mod options;
 
+use std::{
+    ops::Bound,
+    time::{Duration, Instant},
+};
+
 use crate::error::{ok, Error, Result};
 use clap::Parser;
 use futures::{try_join, TryStreamExt};
 use options::Opts;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+    time::{sleep_until, timeout_at},
+};
 use tokio_stream::wrappers::LinesStream;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use zenoh::qos::Priority;
+
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
 fn main() -> eyre::Result<()> {
@@ -46,7 +55,19 @@ async fn main_async() -> Result<()> {
         zenoh_opts,
         priority,
         express,
+        min_rate,
+        max_rate,
     } = Opts::parse();
+
+    let period_range = {
+        let map_rate = |rate: Option<f64>| match rate {
+            Some(rate) => Bound::Included(Duration::from_secs_f64(1.0 / rate)),
+            None => Bound::Unbounded,
+        };
+        let min_period = map_rate(max_rate);
+        let max_period = map_rate(min_rate);
+        (min_period, max_period)
+    };
 
     // Start a Zenoh session.
     let config: zenoh::Config = zenoh_opts.into();
@@ -101,7 +122,8 @@ async fn main_async() -> Result<()> {
         match buffering {
             Buffering::Lines => run_publisher_lines(&session, &key, priority, express).await?,
             Buffering::Block(block_size) => {
-                run_publisher_blocks(&session, &key, block_size, priority, express).await?
+                run_publisher_blocks(&session, &key, block_size, priority, express, period_range)
+                    .await?
             }
         }
 
@@ -164,6 +186,7 @@ async fn run_publisher_blocks(
     block_size: usize,
     priority: Priority,
     express: bool,
+    (min_period, max_period): (Bound<Duration>, Bound<Duration>),
 ) -> Result<()> {
     let publisher = session
         .declare_publisher(key)
@@ -173,15 +196,89 @@ async fn run_publisher_blocks(
 
     let mut stdin = tokio::io::stdin();
     let mut buf = vec![0; block_size];
+    let mut total = 0;
 
-    loop {
-        let size = stdin.read(&mut buf).await?;
-        if size == 0 {
-            break;
-        }
-
-        publisher.put(&buf[0..size]).await?;
+    macro_rules! read {
+        () => {
+            async {
+                let size = stdin.read(&mut buf[total..]).await?;
+                total += size;
+                Result::<_, std::io::Error>::Ok(size > 0)
+            }
+        };
     }
+    macro_rules! publish {
+        () => {
+            publisher.put(&buf[0..total]).await
+        };
+    }
+
+    macro_rules! wait_until {
+        ($deadline:expr) => {
+            if let Some(deadline) = $deadline {
+                if Instant::now() < deadline {
+                    sleep_until(deadline.into()).await;
+                }
+            }
+        };
+    }
+
+    if let Bound::Included(max_period) = max_period {
+        let mut since = Instant::now();
+
+        'round: loop {
+            let wait_until = match min_period {
+                Bound::Included(min_period) => Some(since + min_period),
+                Bound::Excluded(_) => unreachable!(),
+                Bound::Unbounded => None,
+            };
+            let deadline = since + max_period;
+
+            loop {
+                let timeout = timeout_at(deadline.into(), read!()).await;
+                match timeout {
+                    Ok(Ok(true)) => {
+                        // data available
+                        if total == block_size {
+                            wait_until!(wait_until);
+                            publish!()?;
+                            since = Instant::now();
+                            total = 0;
+                            continue 'round;
+                        }
+                    }
+                    Ok(Ok(false)) => {
+                        // stdin closed
+                        wait_until!(wait_until);
+                        publish!()?;
+                        break 'round;
+                    }
+                    Ok(Err(err)) => {
+                        // error
+                        return Err(err.into());
+                    }
+                    Err(_elapsed) => {
+                        // timeout case
+                        if total > 0 {
+                            publish!()?;
+                        }
+                        since = deadline;
+                        total = 0;
+                        continue 'round;
+                    }
+                };
+            }
+        }
+    } else {
+        loop {
+            read!().await?;
+            if total == block_size {
+                publish!()?;
+                total = 0;
+            }
+        }
+    }
+
     Ok(())
 }
 

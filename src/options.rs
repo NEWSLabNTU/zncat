@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::{
-    fmt,
-    fmt::{Debug, Display},
+    fmt::{self, Debug, Display},
     num::NonZeroUsize,
     path::PathBuf,
 };
@@ -28,6 +27,14 @@ pub struct Opts {
     /// Publish input data in blocks with specified size.
     #[clap(long)]
     pub block_size: Option<NonZeroUsize>,
+
+    /// Minimum publication rate if input data is available.
+    #[clap(long)]
+    pub min_rate: Option<f64>,
+
+    /// Maximum publication rate.
+    #[clap(long)]
+    pub max_rate: Option<f64>,
 
     /// QoS priority level [default: Data].
     #[clap(long, default_value = "Data")]

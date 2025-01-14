@@ -65,6 +65,17 @@ zncat --config config.json5 --pub my_topic
 
 More Zenoh options can be discovered by `zncat --help`.
 
+### Min/Max Publication Rate
+
+The `--min-rate <HZ>` and `--max-rate <HZ>` options control the
+publication message rate. They are only effective when `--pub` is
+specified.
+
+- If `--max-rate <HZ>` is provided, it throttles the publication rate.
+
+- If `--min-rate <HZ>` is provided, it eagerly publishes messages when
+  input data is available.
+
 ## License
 
 The software is distributed with a Apache 2.0 license. You can read

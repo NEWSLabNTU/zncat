@@ -24,7 +24,8 @@ pub struct Opts {
     #[clap(long)]
     pub lb: bool,
 
-    /// Publish input data in blocks with specified size.
+    /// Publish input data in blocks with specified size. The default
+    /// block size is 8196 bytes.
     #[clap(long)]
     pub block_size: Option<NonZeroUsize>,
 

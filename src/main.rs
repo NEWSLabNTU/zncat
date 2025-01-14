@@ -1,22 +1,20 @@
 mod error;
 mod options;
 
-use std::{
-    ops::Bound,
-    time::{Duration, Instant},
-};
-
 use crate::error::{ok, Error, Result};
 use clap::Parser;
 use futures::{try_join, TryStreamExt};
 use options::Opts;
+use std::ops::Bound;
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    time::{sleep_until, timeout_at},
+    time::{sleep_until, timeout_at, Duration, Instant},
 };
 use tokio_stream::wrappers::LinesStream;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use zenoh::qos::Priority;
+
+const DEFAULT_BLOCK_SIZE: usize = 8196;
 
 // The main() and main_async() are separated intentionally to perform
 // implicit Error -> eyre::Error conversion.
@@ -110,7 +108,7 @@ async fn main_async() -> Result<()> {
                 if atty::is(atty::Stream::Stdin) {
                     Buffering::Lines
                 } else {
-                    Buffering::Block(8196)
+                    Buffering::Block(DEFAULT_BLOCK_SIZE)
                 }
             }
             (false, Some(block_size)) => Buffering::Block(block_size.get()),
@@ -198,6 +196,7 @@ async fn run_publisher_blocks(
     let mut buf = vec![0; block_size];
     let mut total = 0;
 
+    // Read stdin and append the bytes to the buffer.
     macro_rules! read {
         () => {
             async {
@@ -207,78 +206,106 @@ async fn run_publisher_blocks(
             }
         };
     }
+
+    // Publish a message up to `total` bytes.
     macro_rules! publish {
-        () => {
-            publisher.put(&buf[0..total]).await
-        };
+        () => {{
+            publisher.put(&buf[0..total])
+        }};
     }
 
-    macro_rules! wait_until {
-        ($deadline:expr) => {
-            if let Some(deadline) = $deadline {
-                if Instant::now() < deadline {
-                    sleep_until(deadline.into()).await;
-                }
-            }
-        };
-    }
+    // wait_until!(deadline) sleeps until the specified deadline.
+    // macro_rules! wait_until {
+    //     ($deadline:expr) => {{
+    //         if Instant::now() < deadline {
+    //             sleep_until(deadline.into()).await;
+    //         }
+    //     }};
+    // }
 
-    if let Bound::Included(max_period) = max_period {
-        let mut since = Instant::now();
+    // The starting time of the current round.
+    let mut round_start = Instant::now();
 
-        'round: loop {
-            let wait_until = match min_period {
-                Bound::Included(min_period) => Some(since + min_period),
+    'round: loop {
+        let since_plus_period = |period: Bound<Duration>| -> Option<Instant> {
+            match period {
+                Bound::Included(period) => Some(round_start + period),
                 Bound::Excluded(_) => unreachable!(),
                 Bound::Unbounded => None,
-            };
-            let deadline = since + max_period;
+            }
+        };
 
-            loop {
-                let timeout = timeout_at(deadline.into(), read!()).await;
-                match timeout {
-                    Ok(Ok(true)) => {
-                        // data available
-                        if total == block_size {
-                            wait_until!(wait_until);
-                            publish!()?;
-                            since = Instant::now();
-                            total = 0;
-                            continue 'round;
-                        }
-                    }
-                    Ok(Ok(false)) => {
-                        // stdin closed
-                        wait_until!(wait_until);
-                        publish!()?;
-                        break 'round;
-                    }
-                    Ok(Err(err)) => {
-                        // error
-                        return Err(err.into());
-                    }
-                    Err(_elapsed) => {
-                        // timeout case
-                        if total > 0 {
-                            publish!()?;
-                        }
-                        since = deadline;
-                        total = 0;
-                        continue 'round;
-                    }
-                };
-            }
-        }
-    } else {
+        // The earlist time that can publish messsages
+        let publish_since = since_plus_period(min_period);
+
+        // The deadline until which the reading blocks.
+        let read_deadline = since_plus_period(max_period);
+
         loop {
-            read!().await?;
-            if total == block_size {
-                publish!()?;
-                total = 0;
-            }
+            // The result is Result<Result<bool>>.
+            // - The outer Result indicates whether timeout occured or not.
+            // - The inner Result gives a successful read or a I/O failure.
+            // - The boolean value is true when input data is avaiable.
+            let result = match read_deadline {
+                Some(read_until) => timeout_at(read_until, read!()).await,
+                None => Ok(read!().await),
+            };
+
+            match result {
+                // Case: data available
+                Ok(Ok(true)) => {
+                    // Publish when the buffer is full, Otherwise go
+                    // to the next round.
+
+                    if total == block_size {
+                        // Wait and publish.
+                        if let Some(publish_since) = publish_since {
+                            sleep_until(publish_since).await;
+                        }
+                        publish!().await?;
+
+                        // Reset state variables
+                        round_start = Instant::now();
+                        total = 0;
+
+                        // Go to the next round.
+                        continue 'round;
+                    } else {
+                        // noop
+                    }
+                }
+
+                // Case: stdin closed
+                Ok(Ok(false)) => {
+                    // Wait and publish
+                    if let Some(publish_since) = publish_since {
+                        sleep_until(publish_since).await;
+                    }
+                    publish!().await?;
+
+                    // Stop looping because there is no more data.
+                    break 'round;
+                }
+
+                // Case: I/O error
+                Ok(Err(err)) => {
+                    return Err(err.into());
+                }
+
+                // Case: timeout
+                Err(_elapsed) => {
+                    // Publish buffered data immediately.
+                    if total > 0 {
+                        publish!().await?;
+                    }
+
+                    round_start = Instant::now();
+                    total = 0;
+                    continue 'round;
+                }
+            };
         }
     }
-
     Ok(())
 }
 
